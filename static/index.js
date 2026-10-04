@@ -28,6 +28,7 @@ function typeWriter() {
         document.title = currentText.substring(0, charIndex);
 
         if (charIndex === 0) {
+            document.title = "_";
             deleting = false;
             textIndex = (textIndex + 1) % texts.length;
             setTimeout(typeWriter, 500);
