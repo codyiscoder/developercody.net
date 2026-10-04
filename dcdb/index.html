@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>dcdb</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 2rem 1rem 4rem;
+        background: #131519;
+        color: #e8e6e1;
+        font: 17px/1.7 Georgia, "Times New Roman", serif;
+      }
+
+      .wrap {
+        max-width: 44rem;
+        margin: 0 auto;
+      }
+
+      h1 {
+        font-size: 1.9rem;
+        margin: .2em 0 0;
+      }
+
+      h2 {
+        font-size: 1.25rem;
+        margin: 2.4em 0 .5em;
+        padding-bottom: .2em;
+        border-bottom: 1px solid #292c32;
+      }
+
+      h3 {
+        font-size: 1rem;
+        margin: 1.6em 0 .3em;
+      }
+
+      p {
+        margin: .6em 0;
+      }
+
+      a {
+        color: #63c98d;
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+        color: #8adfb0;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: .85em;
+        background: #1c1e23;
+        border: 1px solid #2b2e34;
+        border-radius: 3px;
+        padding: 0 3px;
+      }
+
+      pre {
+        font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        background: #0d0e12;
+        border: 1px solid #26282e;
+        border-radius: 4px;
+        padding: .8em 1em;
+        overflow-x: auto;
+        margin: .9em 0;
+      }
+
+      pre code {
+        background: none;
+        border: none;
+        padding: 0;
+      }
+
+      .cmt {
+        color: #7c807b;
+      }
+
+      .meta {
+        color: #989c97;
+        font-size: .88em;
+      }
+
+      .tl {
+        color: #c9ccc8;
+        font-style: italic;
+      }
+
+      ul,
+      ol {
+        margin: .5em 0;
+        padding-left: 1.5em;
+      }
+
+      li {
+        margin: .3em 0;
+      }
+
+      nav {
+        font-size: .95em;
+      }
+
+      nav a {
+        margin-right: 1em;
+        white-space: nowrap;
+        display: inline-block;
+      }
+
+      footer {
+        color: #989c97;
+        font-size: .85em;
+        margin-top: 3em;
+        border-top: 1px solid #292c32;
+        padding-top: 1em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <p class="meta">dcdb v0.1.0 &middot; MIT &middot; go 1.18, stdlib only &middot; <a href="https://github.com/codyiscoder/dcdb/blob/main/README.md">README</a> &middot; <a href="https://github.com/codyiscoder/dcdb/blob/main/LICENSE">LICENSE</a></p>
+      <h1>dcdb</h1>
+      <p class="tl">tl;dr — filter, sort, join, hash, save. encrypted files. no server, no database, no dependencies. very epic.</p>
+      <p>dcdb is a tiny scripting language for small datasets. you keep a few hundred or few thousand rows in an encrypted <code>.dcdb</code> file and poke at them with short scripts or the console you get for free when you run it with no arguments.</p>
+      <p>it's not a database. it's closer to <code>awk</code> with a better memory and one party trick: the files are encrypted at rest.</p>
+      <p>why does this exist? because the same five jobs kept coming up — filter a table, sort it, join two files on a key, print a digest, save it back — and i got tired of pulling in a whole dataframe library every time. so i nerded myself into a weekend project that's now about 2,900 lines of standard-library go, six files, zero dependencies. it also runs in a console, because typing <code>load users</code> beats remembering a flag any day.</p>
+      <h2>jump to</h2>
+      <nav><a href="#run">how you run it</a><a href="#console">the console</a><a href="#commands">the commands</a><a href="#recipes">stuff you'd actually do</a><a href="#disk">what the files look like</a><a href="#security">security, such as it is</a><a href="#weird">where it gets weird</a><a href="#hashes">the files, with receipts</a></nav>
+      <h2 id="run">how you run it</h2>
+      <p>any go toolchain works. i test with gccgo 1.18, but plain go is fine.</p>
+      <pre><code>$ go build -o dcdb ./src
+$ ./dcdb -p evening.dc          # run a script, dump the table after
+$ ./dcdb -k vault-key secret.dc   # pass the encryption key
+$ ./dcdb                          # or just get the console</code></pre>
+      <p>flags come in short and long flavors — <code>-p/--print</code>, <code>-t/--time</code>, <code>-k/--key</code>, <code>-dp/--data-path</code>, <code>-op/--output-path</code>, <code>-v/--version</code>, <code>-h/--help</code>. nothing clever.</p>
+      <h2 id="console">the console</h2>
+      <p>run it bare and you get a prompt. every line is a command, data commands print the table back at you, and a typo doesn't kill your session. multi-line blocks give you a <code>... </code> continuation prompt, node-style.</p>
+      <pre><code>$ ./dcdb -k daily
+dcdb 0.1.0 - built-in query console
+
+> load orders
+> only total &gt;= 50
+> show id total
+> save big-orders
+> .exit</code></pre>
+      <p>get out with <code>.help</code>, <code>.exit</code>, or plain ctrl-d.</p>
+      <h2 id="commands">the commands</h2>
+      <p>six operators, that's the whole set: <code>&gt; &gt;= &lt; &lt;= == !=</code>. values are auto-typed — ints, floats, bools, strings, and null for "this field isn't here". line comments start with <code>//</code>. the ordering operators (<code>&gt;</code> and friends) want numbers or null; ordering anything else is an error, not a silent <code>false</code>. that one's a feature, trust me.</p>
+      <h3>rows</h3>
+      <ul>
+        <li><code>load &lt;name&gt;</code> — read <code>data/&lt;name&gt;.dcdb</code>, or whatever path you hand it</li>
+        <li><code>use &lt;a.b&gt;</code> — walk into a nested object; arrays become rows, a map or leaf becomes one <code>value</code> row</li>
+        <li><code>only &lt;f&gt; &lt;op&gt; &lt;v&gt;</code> / <code>delete &lt;f&gt; &lt;op&gt; &lt;v&gt;</code> — keep / drop matching rows</li>
+        <li><code>sort &lt;f&gt; [asc|desc]</code>, <code>take &lt;n&gt;</code>, <code>reverse</code>, <code>clear</code></li>
+        <li><code>add &lt;f&gt;=&lt;v&gt; ...</code> — append a row; <code>update &lt;f&gt; &lt;v&gt; &lt;wf&gt; &lt;wv&gt;</code> — set a field where another one matches</li>
+        <li><code>save &lt;name&gt;</code> — write it back, encrypted. defaults to <code>data/</code>, same as <code>load</code>.</li>
+        <li><code>show [f...]</code>, <code>drop &lt;f&gt; ...</code>, <code>rename &lt;old&gt; &lt;new&gt;</code>, <code>unique &lt;f&gt;</code></li>
+        <li><code>join &lt;name&gt; [left] on &lt;lf&gt; &lt;rf&gt;</code> — hash-join the current table with another file; add <code>left</code> to keep unmatched rows. one merged row per match, and on name collisions the left side wins.</li>
+        <li><code>index &lt;f&gt;</code> / <code>index drop [f]</code> — an in-memory lookup on a field; <code>only ==</code> and <code>update ==</code> use it. anything that reshapes the table drops it, and <code>add</code> keeps it fresh.</li>
+      </ul>
+      <h3>flow &amp; variables</h3>
+      <ul>
+        <li><code>print</code>, <code>printvar &lt;v&gt;</code>, <code>set &lt;v&gt; &lt;val&gt;</code>, <code>echo &lt;text&gt;</code></li>
+        <li><code>hash &lt;text&gt;</code> — print the sha256 hex digest (see the password recipe below)</li>
+        <li><code>while &lt;v&gt; &lt;op&gt; &lt;v2&gt; ... end</code>, <code>for &lt;v&gt; &lt;from&gt; &lt;to&gt; [step] ... end</code>, <code>if ... [else] ... end</code></li>
+        <li><code>proc &lt;name&gt; ... end</code> + <code>call &lt;name&gt;</code> — little subroutines; redefining a name replaces it</li>
+        <li><code>include &lt;file&gt;</code> — run another <code>.dc</code> file relative to the script, depth-capped so it can't loop forever</li>
+        <li><code>++ &lt;v&gt;</code><code>-- &lt;v&gt;</code><code>+ &lt;v&gt; &lt;n&gt;</code><code>- &lt;v&gt; &lt;n&gt;</code><code>* &lt;v&gt; &lt;n&gt;</code><code>/ &lt;v&gt; &lt;n&gt;</code> — mutate a variable in place</li>
+        <li><code>key &lt;pass&gt;</code>, <code>sleep &lt;ms&gt;</code>, <code>exit</code> (<code>run</code> is reserved for later, i have plans)</li>
+      </ul>
+      <h3>transactions</h3>
+      <ul>
+        <li><code>begin</code> — snapshot the table, the variables, and the current document</li>
+        <li><code>commit</code> — keep it. <code>rollback</code> — undo it.</li>
+        <li>and if a runtime error happens inside <code>begin ... end</code>, it rolls itself back to the <code>begin</code>. that's the whole feature, and it's exactly what batch imports want.</li>
+      </ul>
+      <p>if you remember one thing: <code>load users</code> then <code>save users</code> is a round trip. both default to <code>data/</code>.</p>
+      <h2 id="recipes">stuff you'd actually do</h2>
+      <p>these are the ones i use for real.</p>
+      <h3>the evening report</h3>
+      <p>join today's orders to the customer list and rank them. the whole script is six lines:</p>
+      <pre><code><span class="cmt">// evening report - join today's orders to customers</span>
+load customers
+join data/orders.dcdb on id user_id
+sort price desc
+show name item price</code></pre>
+      <pre><code>$ ./dcdb -p evening.dc
+[
+    {
+        "item": "lamp",
+        "name": "Cara",
+        "price": 60
+    },
+    {
+        "item": "shirt",
+        "name": "Alice",
+        "price": 25
+    },
+    {
+        "item": "hat",
+        "name": "Alice",
+        "price": 15
+    },
+    {
+        "item": "mug",
+        "name": "Bob",
+        "price": 4
+    }
+]</code></pre>
+      <h3>import or nothing</h3>
+      <p>batch imports either fully land or fully roll back. if the second <code>add</code> had blown up, the first one would've vanished too.</p>
+      <pre><code>begin
+load invoices
+add id=5512 total=120
+add id=5513 total=45
+save invoices
+commit
+echo imported 2 invoices</code></pre>
+      <h3>not storing raw passwords</h3>
+      <p><code>hash</code> prints a sha256 digest. store that instead of the plaintext, obviously.</p>
+      <pre><code><span class="cmt">// myhash.dc</span>
+hash abc</code></pre>
+      <pre><code>$ ./dcdb myhash.dc
+ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad</code></pre>
+      <h3>one account, fast</h3>
+      <p>build an index once, and the equality filter and the update use it instead of scanning the whole table.</p>
+      <pre><code>load accounts
+index email
+update status "blocked" email "jim@x.io"
+only status == "blocked"
+print</code></pre>
+      <h3>backups and checksums</h3>
+      <pre><code>$ cp work/orders.dcdb backups/orders-$(date +%F).dcdb
+$ sha256sum backups/orders-*.dcdb
+0b31f7fdcc5c179407873f2a8b22e3ae46e6ac8027a4ff444838cd7fac9d6a94  backups/orders-2026-09-23.dcdb</code></pre>
+      <p>and on load, aes-gcm authenticates the whole file anyway, so a corrupt or wrong-key backup fails loudly instead of loading garbage.</p>
+      <h2 id="disk">what the files look like</h2>
+      <p>deliberately a small binary format, not json:</p>
+      <pre><code>DCDB | 03 | salt(16) | iv(12) | aes-256-gcm payload + tag(16)</code></pre>
+      <p>a real one of mine, the top of it:</p>
+      <pre><code>$ od -A d -t x1 data/users.dcdb | head -3
+0000000 44 43 44 42 03 e0 ad 3b 40 01 ca b1 12 60 cf a6
+0000016 7f d4 5f 53 d5 50 36 59 af 67 2a b0 7a d9 37 db
+0000032 13 37 e6 99 00 cf 9d b0 59 34 0d 73 e6 fc 93 b8</code></pre>
+      <pre><code>$ strings data/users.dcdb
+DCDB
+6^&amp;K
+iu-Lu;
+XN3&gt;</code></pre>
+      <p>no names, cities, or json survive — just the magic string and ciphertext noise. old-format files (v1 plaintext, v2 aes-128-ctr + crc32) still load; saves always write v3. and writes go through a <code>.tmp</code> file plus a rename, so a crash mid-save doesn't leave you with half a file.</p>
+      <h2 id="security">security, such as it is</h2>
+      <ul>
+        <li>key derivation: pbkdf2-hmac-sha256, fresh 16-byte salt per write, 65536 iterations, 32-byte key</li>
+        <li>cipher: aes-256-gcm — authenticated, so tampering and wrong keys fail instead of surprising you:</li>
+      </ul>
+      <pre><code>$ printf 'load vault\n' | ./dcdb -k wrong
+&gt; Runtime Error: wrong key or corrupt database file</code></pre>
+      <p>perspective: this keeps the files from being casually readable, and the kdf makes cheap brute force pointless-ish. it is not a hardware vault. if somebody has your laptop and your passphrase on a sticky note, all bets are off. standard advice applies: long passphrase, don't reuse it.</p>
+      <h2 id="weird">where it gets weird</h2>
+      <p>scripts are preflighted — the whole file is parsed before anything runs. a parse error means nothing executes, but you get <em>every</em> error in one pass, so it's one fix-up trip instead of whack-a-mole:</p>
+      <pre><code>$ cat broken.dc
+loda accounts
+spin invoice
+$ ./dcdb broken.dc
+Parser Error: line 1: unknown command "loda"; Parser Error: line 2: unknown command "spin"</code></pre>
+      <ul>
+        <li>runtime errors stop the script; inside a transaction they roll back to <code>begin</code></li>
+        <li>ordering against a non-number is an error — <code>cannot order string against int</code> — not a silent <code>false</code></li>
+        <li><code>exit</code> stops the script cleanly and keeps the changes made so far</li>
+        <li>past about 1024 rows, filters and field rewrites run across your cores, order-preserving</li>
+        <li>things i did not build and probably won't: csv import, network access, an on-disk index, concurrency, a query planner. it's a scripting tool; the dataset lives in memory anyway.</li>
+      </ul>
+      <h2 id="hashes">the files, with receipts</h2>
+      <p>grabbed this repo from somewhere and want to be sure it's the same thing i'm looking at? here are the sha256s:</p>
+      <pre><code>
+    src/main.go       bada596c1825c61d43e93750dc547efbb024e70468c39bbfe72b49d98e9bebcb
+    src/lexer.go      32149d3591f2fe6d292141b5dc65fb47f917581ada02f1cc6bdd176daeb429e0
+    src/value.go      464bc9729a492578a17cb2da705550e5e8cf4363dc0f714fe7ecb0d66069f17f
+    src/interp.go     220bbf90af3be129b63bb92e0101e8482e1101ac55de803ade485b8d352f5706
+    src/store.go      9a66a2c0481dff9633cb0364d2a8461f33ca9b5d37317b440c2e2636fe5eafee
+    src/db_test.go    cfbbbd842ec4545e13ba2352e88a5e5bbdae4f184e682997effd2435c927fded
+    README.md         0e24554139e2d59ee88e868d68c1696655a5c4bd3c6f9f6d334254279b8bc657
+</code></pre>
+      <footer> hand-rolled, one file, zero javascript. ~2,900 lines of go live in <code>src/</code>. last touched 2026-09-23. works on my machine&#8482;. </footer>
+    </div>
+  </body>
+</html>
