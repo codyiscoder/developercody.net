@@ -1,42 +1,32 @@
 const element = document.getElementById("name");
-
-const texts = [
-    "DeveloperCody",
-    "CodyIsCoder"
-];
+const texts = ["frogwater", "cody"];
 
 let textIndex = 0;
 let charIndex = 0;
 let deleting = false;
 
-function typeWriter() {
+function coolnamethingy() {
     const currentText = texts[textIndex];
 
-    if (!deleting) {
-        charIndex++;
-        element.textContent = "Hi, I'm " + currentText.substring(0, charIndex);
-        document.title = currentText.substring(0, charIndex);
+    charIndex += deleting ? -1 : 1;
 
-        if (charIndex === currentText.length) {
-            deleting = true;
-            setTimeout(typeWriter, 1500);
-            return;
-        }
-    } else {
-        charIndex--;
-        element.textContent = "Hi, I'm " + currentText.substring(0, charIndex);
-        document.title = currentText.substring(0, charIndex);
+    const text = currentText.substring(0, charIndex);
 
-        if (charIndex === 0) {
-            document.title = "_";
-            deleting = false;
-            textIndex = (textIndex + 1) % texts.length;
-            setTimeout(typeWriter, 500);
-            return;
-        }
+    element.textContent = `Hi, I'm ${text}`;
+    document.title = text || "_";
+
+    let delay = deleting ? 75 : 120;
+
+    if (!deleting && charIndex === currentText.length) {
+        deleting = true;
+        delay = 1500;
+    } else if (deleting && charIndex === 0) {
+        deleting = false;
+        textIndex = (textIndex + 1) % texts.length;
+        delay = 500;
     }
 
-    setTimeout(typeWriter, deleting ? 75 : 120);
+    setTimeout(coolnamethingy, delay);
 }
 
-typeWriter();
+coolnamethingy();
